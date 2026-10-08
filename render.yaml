@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: hivefix-orchestrator
+    runtime: docker
+    dockerfilePath: ./orchestrator/Dockerfile
+    dockerContext: ./orchestrator
+    plan: free
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LANGCHAIN_TRACING_V2
+        value: "true"
+      - key: LANGCHAIN_API_KEY
+        sync: false
+      - key: LANGCHAIN_PROJECT
+        value: hivefix
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: HIVEFIX_REPO
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION
+        value: hivefix_code_chunks
+      - key: MAX_PATCH_ATTEMPTS
+        value: "2"
+      - key: SANDBOX_POLL_INTERVAL_SECONDS
+        value: "10"
+      - key: SANDBOX_POLL_TIMEOUT_SECONDS
+        value: "900"

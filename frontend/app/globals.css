@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --scanline-opacity: 0.06;
+}
+
+body {
+  background-color: #1a1423;
+  background-image: radial-gradient(circle at 20% 20%, #2a2139 0%, #1a1423 60%);
+  color: #f3e9d2;
+  image-rendering: pixelated;
+}
+
+.pixel-border {
+  border: 3px solid #0d0a14;
+  box-shadow: 4px 4px 0 0 #0d0a14;
+}
+
+.scanlines::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, var(--scanline-opacity)) 0px,
+    rgba(0, 0, 0, var(--scanline-opacity)) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  z-index: 50;
+}
+
+@keyframes buzz {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-4px) rotate(2deg); }
+}
+
+.buzzing {
+  animation: buzz 0.6s ease-in-out infinite;
+}
