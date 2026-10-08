@@ -6,7 +6,8 @@ load_dotenv()
 
 
 class Settings:
-    anthropic_api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
+    groq_api_key: str = os.environ.get("GROQ_API_KEY", "")
+    groq_model: str = os.environ.get("GROQ_MODEL", "qwen/qwen3-32b")
 
     github_token: str = os.environ.get("GITHUB_TOKEN", "")
     hivefix_repo: str = os.environ.get("HIVEFIX_REPO", "")

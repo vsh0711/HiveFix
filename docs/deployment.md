@@ -39,7 +39,7 @@ since that's what gets dispatched for every sandboxed test run.
    reads `render.yaml` at the repo root and creates the `hivefix-orchestrator` web
    service on the free plan automatically.
 2. Render will prompt for the env vars marked `sync: false` in `render.yaml`
-   (`ANTHROPIC_API_KEY`, `LANGCHAIN_API_KEY`, `GITHUB_TOKEN`, `HIVEFIX_REPO`,
+   (`GROQ_API_KEY`, `LANGCHAIN_API_KEY`, `GITHUB_TOKEN`, `HIVEFIX_REPO`,
    `REDIS_URL`, `QDRANT_URL`, `QDRANT_API_KEY`) — fill these in from steps 1–2.
 3. First deploy builds `orchestrator/Dockerfile`. Render free-tier web services spin
    down after 15 minutes idle and cold-start on the next request — fine for a

@@ -1,6 +1,6 @@
 import json
 
-from langchain_anthropic import ChatAnthropic
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .. import identity
@@ -20,7 +20,7 @@ headers for each file changed."""
 
 def patch_node(state: RunState) -> RunState:
     node_identity = identity.PATCH
-    llm = ChatAnthropic(model="claude-sonnet-4-5-20250929", api_key=settings.anthropic_api_key, temperature=0)
+    llm = ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key, temperature=0)
 
     context_block = "\n\n".join(
         f"# {h['file_path']} ({h.get('symbol') or 'module'})\n{h['snippet']}" for h in state.get("retrieval_hits", [])

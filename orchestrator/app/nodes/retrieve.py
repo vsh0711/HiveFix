@@ -1,42 +1,86 @@
+import json
+
+from langchain_groq import ChatGroq
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
 from .. import identity
 from ..audit import append_audit, audit_event
-from ..mcp_tools.ast_callgraph import CallGraph
-from ..mcp_tools.bm25_index import BM25CodeIndex
+from ..config import settings
+from ..mcp_tools.mcp_client import build_langchain_tools, mcp_session
 from ..models.state import RunState
 from ..vectorstore.qdrant_store import QdrantCodeStore
 
+_SYSTEM = """You localize the code responsible for a bug before anyone drafts a fix.
+You have two tools, served over MCP by the repo's own code-tools server:
+- bm25_search(query, k): lexical search over function/class-level code chunks
+- callgraph_lookup(symbol, depth): a suspected symbol's definition plus its callers/callees
 
-def retrieve_node(state: RunState) -> RunState:
+Use them to investigate the issue summary and suspected symbols below. Call tools as
+many times as useful (each call narrows or confirms a hypothesis), then — once you
+have enough to localize the fault — respond with a short plain-text confirmation and
+make no further tool calls."""
+
+_MAX_TOOL_ITERATIONS = 4
+
+
+async def retrieve_node(state: RunState) -> RunState:
     node_identity = identity.RETRIEVE
     repo_path = state["clone_path"]
-    sources_used: list[str] = []
 
-    bm25 = BM25CodeIndex(repo_path)
-    bm25_hits = bm25.search(state["triage_summary"], k=6)
-    if bm25_hits:
-        sources_used.append("bm25_search")
+    tool_calls_made: list[dict] = []
+    hits: list[dict] = []
 
-    callgraph = CallGraph(repo_path)
-    callgraph_hits: list[dict] = []
-    for symbol in state.get("suspected_symbols", [])[:5]:
-        callgraph_hits.extend(callgraph.lookup(symbol, depth=1))
-    if callgraph_hits:
-        sources_used.append("callgraph_lookup")
+    async with mcp_session() as session:
+        tools = build_langchain_tools(session, repo_path)
+        tools_by_name = {t.name: t for t in tools}
+
+        llm = ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key, temperature=0).bind_tools(tools)
+
+        messages = [
+            SystemMessage(content=_SYSTEM),
+            HumanMessage(
+                content=(
+                    f"Issue summary: {state['triage_summary']}\n"
+                    f"Suspected symbols: {state.get('suspected_symbols', [])}"
+                )
+            ),
+        ]
+
+        for _ in range(_MAX_TOOL_ITERATIONS):
+            response: AIMessage = await llm.ainvoke(
+                messages,
+                config={
+                    "tags": [node_identity.name],
+                    "run_name": node_identity.name,
+                    "metadata": {"run_id": state["run_id"], "node": node_identity.name},
+                },
+            )
+            messages.append(response)
+
+            if not response.tool_calls:
+                break
+
+            for call in response.tool_calls:
+                tool = tools_by_name[call["name"]]
+                result = await tool.coroutine(**call["args"])
+                hits.extend(result)
+                tool_calls_made.append({"name": call["name"], "args": call["args"], "result_count": len(result)})
+                messages.append(
+                    ToolMessage(content=json.dumps(result), tool_call_id=call["id"])
+                )
 
     qdrant_hits: list[dict] = []
     qdrant_error: str | None = None
     try:
         store = QdrantCodeStore()
         store.index_repo(repo_path, state["repo_owner"], state["repo_name"])
-        qdrant_hits = store.search(state["triage_summary"], k=6)
-        if qdrant_hits:
-            sources_used.append("qdrant_search")
-    except Exception as exc:  # noqa: BLE001 — Qdrant is a fallback; BM25/call-graph still carry the run
+        qdrant_hits = store.search(state["triage_summary"], state["repo_owner"], state["repo_name"], k=6)
+    except Exception as exc:  # noqa: BLE001 — Qdrant is a fallback; MCP tool hits still carry the run
         qdrant_error = str(exc)
 
     seen: set[tuple[str, str]] = set()
     merged: list[dict] = []
-    for hit in bm25_hits + callgraph_hits + qdrant_hits:
+    for hit in hits + qdrant_hits:
         key = (hit["file_path"], hit.get("symbol") or "")
         if key not in seen:
             seen.add(key)
@@ -45,7 +89,7 @@ def retrieve_node(state: RunState) -> RunState:
     entry = audit_event(
         node_identity,
         action="retrieve_context",
-        detail={"tools_used": sources_used, "hit_count": len(merged), "qdrant_error": qdrant_error},
+        detail={"mcp_tool_calls": tool_calls_made, "hit_count": len(merged), "qdrant_error": qdrant_error},
         status="ok" if merged else "empty",
     )
 

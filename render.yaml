@@ -6,8 +6,10 @@ services:
     dockerContext: ./orchestrator
     plan: free
     envVars:
-      - key: ANTHROPIC_API_KEY
+      - key: GROQ_API_KEY
         sync: false
+      - key: GROQ_MODEL
+        value: qwen/qwen3-32b
       - key: LANGCHAIN_TRACING_V2
         value: "true"
       - key: LANGCHAIN_API_KEY

@@ -1,6 +1,6 @@
 import json
 
-from langchain_anthropic import ChatAnthropic
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .. import identity
@@ -20,7 +20,7 @@ Respond ONLY with JSON: {"summary": str, "suspected_symbols": [str, ...]}"""
 
 def triage_node(state: RunState) -> RunState:
     node_identity = identity.TRIAGE
-    llm = ChatAnthropic(model="claude-sonnet-4-5-20250929", api_key=settings.anthropic_api_key, temperature=0)
+    llm = ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key, temperature=0)
     messages = [
         SystemMessage(content=_SYSTEM),
         HumanMessage(content=f"Title: {state['issue_title']}\n\nBody:\n{state['issue_body']}"),

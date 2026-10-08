@@ -25,20 +25,36 @@ run-name: sandbox-test ${{ inputs.run_token }}
 jobs:
   run-sandbox:
     runs-on: ubuntu-latest
+    # Inputs are untrusted (test_command is caller-settable via the orchestrator's
+    # public API). They are passed in ONLY via `env:`, never interpolated into a
+    # `run:` script body — GitHub Actions does literal text substitution of
+    # `${{ }}` expressions before the shell parses the script, so interpolating
+    # them directly would let a crafted input run arbitrary code on this runner
+    # (which has this repo's GITHUB_TOKEN), escaping the Docker sandbox entirely.
+    # `env:` passes values as real environment variables instead, which the shell
+    # never re-parses as code.
     steps:
       - name: Clone target repo
-        run: git clone --depth 1 --branch "${{ inputs.base_ref }}" "${{ inputs.repo_url }}" target
+        env:
+          REPO_URL: ${{ inputs.repo_url }}
+          BASE_REF: ${{ inputs.base_ref }}
+        run: git clone --depth 1 --branch "$BASE_REF" "$REPO_URL" target
 
       - name: Apply candidate patch
+        env:
+          PATCH_B64: ${{ inputs.patch_b64 }}
         run: |
-          echo "${{ inputs.patch_b64 }}" | base64 --decode > patch.diff
+          echo "$PATCH_B64" | base64 --decode > patch.diff
           cd target
           git apply --whitespace=fix ../patch.diff
 
       - name: Run tests in Docker sandbox
+        env:
+          TEST_COMMAND: ${{ inputs.test_command }}
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/target:/workspace" \
             -w /workspace \
+            -e TEST_COMMAND \
             python:3.11-slim \
-            bash -c "pip install -q -e . >/dev/null 2>&1 || pip install -q -r requirements.txt >/dev/null 2>&1 || true; ${{ inputs.test_command }}"
+            bash -c 'pip install -q -e . >/dev/null 2>&1 || pip install -q -r requirements.txt >/dev/null 2>&1 || true; eval "$TEST_COMMAND"'

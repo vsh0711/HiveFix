@@ -3,12 +3,12 @@ LangGraph patch-localization step calls. Indexes are built per-repo-path and cac
 for the lifetime of the server process.
 """
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from .ast_callgraph import CallGraph
 from .bm25_index import BM25CodeIndex
 
-mcp = FastMCP("hivefix-code-tools")
+mcp = MCPServer("hivefix-code-tools")
 
 _bm25_cache: dict[str, BM25CodeIndex] = {}
 _callgraph_cache: dict[str, CallGraph] = {}
@@ -46,4 +46,4 @@ def clear_cache(repo_path: str) -> None:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="stdio")

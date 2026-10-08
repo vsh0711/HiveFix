@@ -57,9 +57,17 @@ class QdrantCodeStore:
         if points:
             self._client.upsert(collection_name=settings.qdrant_collection, points=points)
 
-    def search(self, query: str, k: int = 6) -> list[dict]:
+    def search(self, query: str, owner: str, repo: str, k: int = 6) -> list[dict]:
+        repo_tag = f"{owner}/{repo}"
         vector = self._embedder.embed(query)
-        results = self._client.search(collection_name=settings.qdrant_collection, query_vector=vector, limit=k)
+        response = self._client.query_points(
+            collection_name=settings.qdrant_collection,
+            query=vector,
+            limit=k,
+            query_filter=qmodels.Filter(
+                must=[qmodels.FieldCondition(key="repo", match=qmodels.MatchValue(value=repo_tag))]
+            ),
+        )
         return [
             {
                 "file_path": r.payload["file_path"],
@@ -68,7 +76,7 @@ class QdrantCodeStore:
                 "snippet": r.payload.get("snippet", ""),
                 "source": "qdrant",
             }
-            for r in results
+            for r in response.points
         ]
 
 
