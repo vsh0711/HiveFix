@@ -17,10 +17,21 @@ FROM node:20-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HOSTNAME="0.0.0.0"
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 3000
-CMD ["node", "server.js"]
+# Next's generated standalone server.js auto-binds to process.env.PORT. If the
+# deploy platform injects its own PORT (common — Render does for every
+# service) without it matching what the platform's proxy actually forwards to
+# (which may instead be inferred from this Dockerfile's EXPOSE), the app ends
+# up listening somewhere the proxy never connects to: container reports
+# healthy/deployed, but every external request gets a 502. Setting PORT
+# inline, in the same shell invocation as the command, overrides any
+# inherited environment value for this process specifically — pinning the
+# app to the same port this image declares via EXPOSE, the same pattern the
+# orchestrator's Dockerfile uses with a hardcoded --port.
+CMD ["sh", "-c", "PORT=3000 node server.js"]
