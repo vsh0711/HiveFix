@@ -227,3 +227,17 @@ Each of these was found by running the system for real, not by reading the code.
   opening a PR for an unverified fix — the deliberate cost of that choice is exactly
   the `max_of` result above: a fixable bug the agent didn't resolve within one run,
   in exchange for the 0% false-approval guarantee holding unconditionally.
+
+- **HiveFix's identity on GitHub is textual, not a distinguishable account.**
+  The commit itself is correctly attributed (`author: HiveFix
+  <hivefix-bot@users.noreply.github.com>`, visible in the commit history), and
+  every PR body states "Opened autonomously by HiveFix — no human edits in the
+  loop." But opening a PR via the GitHub API is tied to whatever token made the
+  call, and that's the repo owner's own fine-grained PAT — so the PR's "opened
+  by" badge, avatar, and profile link on GitHub's own UI all show the owner, not
+  a separate HiveFix identity. (Verified directly against a real merged PR, not
+  assumed from the code.) Fixing this for real needs HiveFix to act through its
+  own GitHub identity — a dedicated bot account, or a registered GitHub App (the
+  pattern tools like Dependabot use, which shows an "App" badge) — either of
+  which needs an account HiveFix's own code can't create for itself. Left as the
+  owner's identity for now, a deliberate scope cut rather than an oversight.
