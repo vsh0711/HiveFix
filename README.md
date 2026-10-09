@@ -2,7 +2,19 @@
 
 Autonomous bug-resolution agent: takes a GitHub issue from triage to a merge-ready pull request, with no human edits in the loop. Built on LangGraph, with every patch gated behind a Docker-sandboxed regression run before a PR is opened.
 
+**Live:** [hivefix-orchestrator.onrender.com](https://hivefix-orchestrator.onrender.com) · **Results:** [docs/technical_findings.md](docs/technical_findings.md) · [docs/eval_results.md](docs/eval_results.md)
+
+![HiveFix dashboard demo](docs/demo.gif)
+
 Persona: **Buzz** — the HiveFix bee. The dashboard visualizes each run as Buzz flying between stages (scout → trail → pollinate → hive-check → honey delivered). PRs and commit messages themselves stay plain/professional; the persona lives only in the dashboard UI.
+
+## Results
+
+5 of 6 real, distinct bugs resolved end-to-end against a live demo repo, each a clean
+one-line fix, **0% false-approval rate held across every attempt** — the sandboxed
+test gate rejected every incorrect patch before a PR could open, including on the one
+unresolved issue. Full breakdown, real bugs found while building this, and the
+deliberate tradeoffs behind the design: **[docs/technical_findings.md](docs/technical_findings.md)**.
 
 ## Scope (v1)
 
@@ -11,30 +23,61 @@ Persona: **Buzz** — the HiveFix bee. The dashboard visualizes each run as Buzz
 
 ## Architecture
 
-```
-GitHub issue URL
-      │
-      ▼
- ┌─────────┐   ┌───────────┐   ┌──────────┐   ┌─────────────┐   ┌──────┐   ┌────────┐
- │ Triage  │──▶│ Retrieve  │──▶│  Patch   │──▶│   Sandbox    │──▶│ Gate │──▶│ Open PR│
- │ (LLM)   │   │ BM25 +    │   │  draft   │   │ dispatch     │   │      │   │ (PR)   │
- │         │   │ AST call- │   │  (LLM)   │   │ (GH Actions  │   │      │   │        │
- │         │   │ graph MCP │   │          │   │  + Docker)   │   │      │   │        │
- │         │   │ + Qdrant  │   │          │   │              │   │      │   │        │
- └─────────┘   └───────────┘   └──────────┘   └─────────────┘   └──┬───┘   └────────┘
-                                     ▲                               │ fail, retries left
-                                     └───────────────────────────────┘
+```mermaid
+flowchart LR
+    issue([GitHub issue URL]) --> triage
+
+    subgraph graph["LangGraph orchestrator"]
+        triage["Triage\nhivefix-triage\n(LLM)"]
+        retrieve["Retrieve\nhivefix-retriever\nBM25 + AST call-graph\n(MCP) + Qdrant"]
+        patch["Patch\nhivefix-patcher\n(LLM + diff repair)"]
+        sandbox["Sandbox\nhivefix-verifier\ndispatch + poll"]
+        gate{"Gate\nhivefix-gate"}
+        publish["Open PR\nhivefix-publisher"]
+        fail(["Abort\n(retries exhausted)"])
+
+        triage --> retrieve --> patch --> sandbox --> gate
+        gate -- "fail, retries left" --> patch
+        gate -- "pass" --> publish
+        gate -- "fail, exhausted" --> fail
+    end
+
+    sandbox -. dispatch .-> actions["GitHub Actions\nsandbox-test.yml\n(Docker)"]
+    actions -. poll result .-> sandbox
+    publish --> pr([Pull request])
+
+    graph -.->|audit_log + state| redis[(Redis)]
+    retrieve -.-> qdrant[(Qdrant)]
+    graph -.->|trace per node identity| langsmith[[LangSmith]]
+    redis -.->|live run state| dashboard["Dashboard\n(Next.js)"]
 ```
 
 - **LangGraph** orchestrates the state machine above (`orchestrator/app/graph`).
-- **LangChain** (+ Groq, free-tier inference — default model `qwen/qwen3.8-27b`) drives triage, retrieval tool-calling, and patch drafting.
-- **MCP tools** (`orchestrator/app/mcp_tools`) expose BM25 code search and AST call-graph traversal to the agent for fault localization.
+- **LangChain** drives triage, retrieval tool-calling, and patch drafting.
+- **MCP tools** (`orchestrator/app/mcp_tools`) expose BM25 code search and AST call-graph traversal to the agent for fault localization, called by the agent as real MCP tool-calling (not a direct function call).
 - **Qdrant** holds embedded code chunks as a semantic-search fallback alongside BM25.
 - **Redis** stores run state/events for the dashboard and acts as the run queue.
-- **LangSmith** traces every graph run end-to-end.
-- **RAGAS** (`orchestrator/app/eval`) scores patch groundedness against retrieved context offline, over a sampled issue set.
+- **LangSmith** traces every graph run end-to-end, tagged per node identity.
+- **RAGAS** (`orchestrator/app/eval`) scores patch groundedness against retrieved context offline, over a sampled issue set — see [docs/eval_results.md](docs/eval_results.md).
 - **Docker** sandboxed regression runs happen via a GitHub Actions workflow (`.github/workflows/sandbox-test.yml`) dispatched by the orchestrator against the target repo — GitHub-hosted runners have Docker natively and are free for public repos.
 - **Frontend** (`frontend/`) is a live dashboard showing Buzz move through the stages of a run, with diff and sandbox log viewers.
+
+## Tech stack
+
+| Layer | Tech |
+|---|---|
+| Agent orchestration | LangGraph (state machine), LangChain (LLM calls, tool binding) |
+| LLM provider | Groq (OpenAI-compatible API via `langchain-groq`) |
+| Tool-calling | MCP (`mcp` Python SDK) — BM25 + AST call-graph server, called over stdio |
+| Retrieval | `rank-bm25`, Python `ast` module, Qdrant (vector store) |
+| State / queue | Redis (run state, pub/sub for live dashboard updates) |
+| Observability | LangSmith (per-node-identity tracing), structured audit trail in run state |
+| Evaluation | RAGAS (faithfulness, context precision/recall) |
+| Sandboxed verification | GitHub Actions + Docker (`python:3.11-slim`) |
+| Backend API | FastAPI + Uvicorn |
+| Frontend | Next.js (App Router) + Tailwind, SSE for live run streaming |
+| Deployment | Docker (`docker-compose` locally), Render (orchestrator), Redis Cloud, Qdrant Cloud |
+| Source control integration | GitHub REST API via PyGithub + GitPython |
 
 ## Agent identity, access & traceability
 
@@ -72,30 +115,30 @@ Every LLM call also carries the node's identity as a LangSmith tag/run-name, so 
 audit log (what happened) and the LangSmith trace (why — full prompts/completions)
 cross-reference by identity + run_id.
 
-## Local dev
+## How to run
 
 ```bash
-cp .env.example .env   # fill in GROQ_API_KEY, GITHUB_TOKEN, etc.
+git clone https://github.com/vsh0711/HiveFix.git && cd HiveFix
+cp .env.example .env   # fill in GROQ_API_KEY, GITHUB_TOKEN, HIVEFIX_REPO, etc.
 docker compose up --build
 ```
 
+- Dashboard: http://localhost:3000
 - Orchestrator API: http://localhost:8000
-- Qdrant: http://localhost:6333
-- Redis: localhost:6379
-- Frontend: http://localhost:3000
+- Qdrant: http://localhost:6333 · Redis: localhost:6379
 
-## Known limitation: Groq free-tier rate limits
+Trigger a run either from the dashboard form, or directly:
 
-`qwen/qwen3.8-27b` on Groq's free tier caps output tokens at 1000/minute, which a
-single HiveFix run can exceed on its own (triage + up to 4 retrieval tool-calling
-turns + patch drafting, each a real LLM call). `app/llm_utils.py`'s
-`invoke_with_retry`/`ainvoke_with_retry` back off ~70s and retry (up to 3 attempts)
-on a detected rate-limit error rather than failing the run outright, but a run can
-still take several minutes longer than it otherwise would under sustained load.
-Groq's paid tiers raise this limit substantially if throughput matters more than
-cost for a given deployment.
+```bash
+curl -X POST http://localhost:8000/runs \
+  -H "Content-Type: application/json" \
+  -d '{"issue_url": "https://github.com/<owner>/<repo>/issues/<n>", "test_command": "pytest -q"}'
+```
+
+Poll `GET /runs/{run_id}` (or watch the dashboard) for live status; a resolved run's
+`pr_url` field has the opened pull request.
 
 ## Deployment
 
-- Orchestrator API + Redis + Qdrant: free tiers (Render + Redis Cloud + Qdrant Cloud) — see `docs/deployment.md`.
+- Orchestrator API + Redis + Qdrant: free tiers (Render + Redis Cloud + Qdrant Cloud) — see [docs/deployment.md](docs/deployment.md).
 - Sandboxed test execution: dispatched as a `workflow_dispatch` run on **this** repo's Actions (`.github/workflows/sandbox-test.yml`), which clones the target repo, applies the candidate patch, and runs its test suite inside Docker. The orchestrator polls the run via the GitHub API rather than relying on a callback.
