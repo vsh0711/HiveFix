@@ -18,12 +18,39 @@ export type RunState = {
   audit_log?: { ts: number; identity: string; action: string; status: string; detail: Record<string, unknown> }[];
 };
 
+const API_KEY_STORAGE_KEY = "hivefix_api_key";
+
+// Never a NEXT_PUBLIC_* build-time constant — that would bake the secret into the
+// public JS bundle, visible to anyone who loads the deployed dashboard. Entered
+// and kept client-side only, per browser.
+export function getStoredApiKey(): string {
+  try {
+    return localStorage.getItem(API_KEY_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function setStoredApiKey(key: string): void {
+  try {
+    if (key) localStorage.setItem(API_KEY_STORAGE_KEY, key);
+    else localStorage.removeItem(API_KEY_STORAGE_KEY);
+  } catch {
+    // ignore — private browsing / blocked storage; the key just won't persist
+  }
+}
+
 export async function startRun(issueUrl: string, testCommand: string): Promise<{ run_id: string }> {
+  const apiKey = getStoredApiKey();
   const res = await fetch(`${ORCHESTRATOR_URL}/runs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    },
     body: JSON.stringify({ issue_url: issueUrl, test_command: testCommand }),
   });
+  if (res.status === 401) throw new Error("401: missing or invalid API key — set it below the form");
   if (!res.ok) throw new Error(`Failed to start run: ${res.status}`);
   return res.json();
 }

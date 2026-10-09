@@ -20,6 +20,8 @@ services:
         sync: false
       - key: HIVEFIX_REPO
         sync: false
+      - key: HIVEFIX_API_KEY
+        sync: false
       - key: REDIS_URL
         sync: false
       - key: QDRANT_URL
@@ -29,7 +31,7 @@ services:
       - key: QDRANT_COLLECTION
         value: hivefix_code_chunks
       - key: MAX_PATCH_ATTEMPTS
-        value: "2"
+        value: "3"
       - key: SANDBOX_POLL_INTERVAL_SECONDS
         value: "10"
       - key: SANDBOX_POLL_TIMEOUT_SECONDS

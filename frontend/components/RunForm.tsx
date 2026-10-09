@@ -1,15 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { startRun } from "@/lib/api";
+import { getStoredApiKey, setStoredApiKey, startRun } from "@/lib/api";
 
 export function RunForm() {
   const [issueUrl, setIssueUrl] = useState("");
   const [testCommand, setTestCommand] = useState("pytest -q");
+  const [apiKey, setApiKey] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    setApiKey(getStoredApiKey());
+  }, []);
+
+  function handleApiKeyChange(value: string) {
+    setApiKey(value);
+    setStoredApiKey(value);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,6 +55,17 @@ export function RunForm() {
           className="mt-2 w-full bg-hive-ink text-hive-amber text-[10px] p-3 pixel-border outline-none"
         />
       </label>
+      <details className="text-[9px] text-hive-line">
+        <summary className="cursor-pointer text-hive-amber">API key (owner only)</summary>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => handleApiKeyChange(e.target.value)}
+          placeholder="only needed if this deployment requires one"
+          className="mt-2 w-full bg-hive-ink text-hive-amber text-[10px] p-3 pixel-border outline-none"
+        />
+        <p className="mt-1">Stored only in this browser, never shipped in the page itself.</p>
+      </details>
       <button
         type="submit"
         disabled={submitting}

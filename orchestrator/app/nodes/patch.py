@@ -22,6 +22,14 @@ character in unchanged (context) lines, and make sure each hunk's `@@ -a,b +c,d 
 line counts (b and d) equal the actual number of context+changed lines that follow it
 in that hunk.
 
+Before finalizing, mentally execute your patched code against the issue's own
+reported reproduction (the specific inputs and the expected vs. actual output it
+describes) line by line, tracking which branch executes and what each variable holds
+— don't just confirm the change "looks like" a fix for the described symptom. If that
+trace doesn't actually produce the expected output, the patch is wrong even if the
+diff mechanics are perfect: derive a different fix, trace that one too, and only
+output a patch whose traced result matches what the issue says is expected.
+
 Respond ONLY with JSON: {"patch_diff": str, "rationale": str}
 `patch_diff` must be a valid unified diff starting with `--- a/<path>` / `+++ b/<path>`
 headers for each file changed."""
