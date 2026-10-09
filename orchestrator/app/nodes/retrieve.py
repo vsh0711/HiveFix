@@ -6,6 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from .. import identity
 from ..audit import append_audit, audit_event
 from ..config import settings
+from ..llm_utils import ainvoke_with_retry
 from ..mcp_tools.mcp_client import build_langchain_tools, mcp_session
 from ..models.state import RunState
 from ..vectorstore.qdrant_store import QdrantCodeStore
@@ -47,7 +48,8 @@ async def retrieve_node(state: RunState) -> RunState:
         ]
 
         for _ in range(_MAX_TOOL_ITERATIONS):
-            response: AIMessage = await llm.ainvoke(
+            response: AIMessage = await ainvoke_with_retry(
+                llm,
                 messages,
                 config={
                     "tags": [node_identity.name],

@@ -84,6 +84,17 @@ docker compose up --build
 - Redis: localhost:6379
 - Frontend: http://localhost:3000
 
+## Known limitation: Groq free-tier rate limits
+
+`qwen/qwen3.8-27b` on Groq's free tier caps output tokens at 1000/minute, which a
+single HiveFix run can exceed on its own (triage + up to 4 retrieval tool-calling
+turns + patch drafting, each a real LLM call). `app/llm_utils.py`'s
+`invoke_with_retry`/`ainvoke_with_retry` back off ~70s and retry (up to 3 attempts)
+on a detected rate-limit error rather than failing the run outright, but a run can
+still take several minutes longer than it otherwise would under sustained load.
+Groq's paid tiers raise this limit substantially if throughput matters more than
+cost for a given deployment.
+
 ## Deployment
 
 - Orchestrator API + Redis + Qdrant: free tiers (Render + Redis Cloud + Qdrant Cloud) — see `docs/deployment.md`.

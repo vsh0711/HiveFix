@@ -8,7 +8,7 @@ from .. import identity
 from ..audit import append_audit, audit_event
 from ..config import settings
 from ..diff_utils import repair_diff
-from ..llm_utils import parse_json_response
+from ..llm_utils import invoke_with_retry, parse_json_response
 from ..models.state import RunState
 
 _SYSTEM = """You are a senior engineer fixing a bug. You are given an issue summary,
@@ -82,7 +82,8 @@ def patch_node(state: RunState) -> RunState:
     messages = list(base_messages)
 
     for local_attempt in range(_MAX_LOCAL_VALIDATION_ATTEMPTS):
-        response = llm.invoke(
+        response = invoke_with_retry(
+            llm,
             messages,
             config={
                 "tags": [node_identity.name],

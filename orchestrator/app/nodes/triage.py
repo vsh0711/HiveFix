@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from .. import identity
 from ..audit import append_audit, audit_event
 from ..config import settings
-from ..llm_utils import parse_json_response
+from ..llm_utils import invoke_with_retry, parse_json_response
 from ..models.state import RunState
 
 _SYSTEM = """You triage GitHub issues for an autonomous bug-fix agent. Given an issue
@@ -24,7 +24,8 @@ def triage_node(state: RunState) -> RunState:
         SystemMessage(content=_SYSTEM),
         HumanMessage(content=f"Title: {state['issue_title']}\n\nBody:\n{state['issue_body']}"),
     ]
-    response = llm.invoke(
+    response = invoke_with_retry(
+        llm,
         messages,
         config={
             "tags": [node_identity.name],
