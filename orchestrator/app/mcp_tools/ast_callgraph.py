@@ -54,6 +54,14 @@ class CallGraph:
             return func.attr
         return None
 
+    def _read_lines(self, rel_path: str, start: int, end: int) -> str:
+        try:
+            with open(os.path.join(self.repo_path, rel_path), "r", encoding="utf-8", errors="ignore") as fh:
+                lines = fh.read().splitlines()
+            return "\n".join(lines[start - 1 : end])
+        except OSError:
+            return ""
+
     def lookup(self, symbol: str, depth: int = 1) -> list[dict]:
         """Return the symbol's own definition plus callers/callees up to `depth` hops."""
         seen: set[str] = set()
@@ -74,7 +82,7 @@ class CallGraph:
                             "file_path": file_path,
                             "symbol": name,
                             "score": 1.0 if name == symbol else 0.5,
-                            "snippet": f"lines {start}-{end}",
+                            "snippet": self._read_lines(file_path, start, end),
                             "source": "callgraph",
                         }
                     )

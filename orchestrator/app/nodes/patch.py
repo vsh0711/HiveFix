@@ -1,4 +1,5 @@
-import json
+import subprocess
+import tempfile
 
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -6,16 +7,44 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from .. import identity
 from ..audit import append_audit, audit_event
 from ..config import settings
+from ..diff_utils import repair_diff
+from ..llm_utils import parse_json_response
 from ..models.state import RunState
 
 _SYSTEM = """You are a senior engineer fixing a bug. You are given an issue summary,
-retrieved code context (file paths + snippets), and — on retry — the previous patch's
-test failure output. Produce a minimal fix as a single unified diff (git apply
---whitespace=fix compatible), touching only the files necessary.
+retrieved code context (file paths + snippets), and — on retry — either the previous
+patch's sandbox test failure, or a `git apply` error if the previous patch was
+malformed. Produce a minimal fix as a single unified diff (git apply --whitespace=fix
+compatible), touching only the files necessary.
+
+Context snippets are exact source lines from the real file — match them character for
+character in unchanged (context) lines, and make sure each hunk's `@@ -a,b +c,d @@`
+line counts (b and d) equal the actual number of context+changed lines that follow it
+in that hunk.
 
 Respond ONLY with JSON: {"patch_diff": str, "rationale": str}
 `patch_diff` must be a valid unified diff starting with `--- a/<path>` / `+++ b/<path>`
 headers for each file changed."""
+
+_MAX_LOCAL_VALIDATION_ATTEMPTS = 2
+
+
+def _git_apply_check(repo_path: str, patch_diff: str) -> str | None:
+    """Dry-run validates a diff against the real clone. Returns None if it applies
+    cleanly, otherwise the git error — this catches hallucinated context lines and
+    wrong hunk-header line counts (both common LLM diff-generation failure modes)
+    before wasting a sandbox dispatch round-trip on a patch that can't even apply."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False) as fh:
+        fh.write(patch_diff)
+        patch_path = fh.name
+
+    result = subprocess.run(
+        ["git", "apply", "--check", "--whitespace=fix", patch_path],
+        cwd=repo_path,
+        capture_output=True,
+        text=True,
+    )
+    return None if result.returncode == 0 else result.stderr.strip()
 
 
 def patch_node(state: RunState) -> RunState:
@@ -35,7 +64,8 @@ def patch_node(state: RunState) -> RunState:
             "Produce a different, corrected patch."
         )
 
-    messages = [
+    attempt = state.get("attempt", 0) + 1
+    base_messages = [
         SystemMessage(content=_SYSTEM),
         HumanMessage(
             content=(
@@ -45,26 +75,65 @@ def patch_node(state: RunState) -> RunState:
             )
         ),
     ]
-    response = llm.invoke(
-        messages,
-        config={
-            "tags": [node_identity.name],
-            "run_name": node_identity.name,
-            "metadata": {"run_id": state["run_id"], "node": node_identity.name, "attempt": state.get("attempt", 0) + 1},
-        },
-    )
 
-    try:
-        parsed = json.loads(response.content)
-    except (json.JSONDecodeError, TypeError):
-        parsed = {"patch_diff": "", "rationale": response.content}
+    parsed: dict = {}
+    validation_errors: list[str] = []
+    validated = False
+    messages = list(base_messages)
 
-    attempt = state.get("attempt", 0) + 1
+    for local_attempt in range(_MAX_LOCAL_VALIDATION_ATTEMPTS):
+        response = llm.invoke(
+            messages,
+            config={
+                "tags": [node_identity.name],
+                "run_name": node_identity.name,
+                "metadata": {"run_id": state["run_id"], "node": node_identity.name, "attempt": attempt},
+            },
+        )
+        parsed = parse_json_response(response.content) or {"patch_diff": "", "rationale": response.content}
+
+        diff = parsed.get("patch_diff", "")
+        if not diff:
+            break
+
+        # Hunk positions, counts, and context are all mechanically determined by the
+        # real file — smaller models reliably get the changed code right but are
+        # unreliable about this bookkeeping, so repair it before even checking rather
+        # than spending a retry asking the model to recompute it by hand.
+        diff = repair_diff(diff, state["clone_path"])
+        parsed["patch_diff"] = diff
+
+        git_error = _git_apply_check(state["clone_path"], diff)
+        if git_error is None:
+            validated = True
+            break
+
+        validation_errors.append(git_error)
+        if local_attempt < _MAX_LOCAL_VALIDATION_ATTEMPTS - 1:
+            messages = base_messages + [
+                HumanMessage(
+                    content=(
+                        f"That patch failed `git apply --check` with:\n{git_error}\n\n"
+                        "Fix the diff so it applies cleanly — check hunk header line counts "
+                        "and that context lines match the source exactly."
+                    )
+                )
+            ]
+
+    if parsed.get("patch_diff"):
+        status = "ok" if validated else "unvalidated_patch"
+    else:
+        status = "empty_patch"
+
     entry = audit_event(
         node_identity,
         action="draft_patch",
-        detail={"attempt": attempt, "diff_lines": len(parsed.get("patch_diff", "").splitlines())},
-        status="ok" if parsed.get("patch_diff") else "empty_patch",
+        detail={
+            "attempt": attempt,
+            "diff_lines": len(parsed.get("patch_diff", "").splitlines()),
+            "local_validation_errors": validation_errors,
+        },
+        status=status,
     )
 
     return {

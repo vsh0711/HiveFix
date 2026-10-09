@@ -4,6 +4,7 @@ bounded-attempt logic together.
 """
 
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -34,11 +35,18 @@ async def main():
         title = "subtract() is wrong"
         body = "subtract(5, 2) should be 3."
 
+    # A genuinely valid diff for the repo content above — reused for both attempts.
+    # Which sandbox "run" passes/fails is controlled independently via sandbox_results
+    # below, so the diff's own validity isn't what's under test here; it just needs to
+    # pass patch_node's local `git apply --check` so the local-validation retry loop
+    # (a separate thing from this outer attempt/retry loop) doesn't consume extra
+    # entries from this queue.
+    valid_diff = "--- a/calc.py\n+++ b/calc.py\n@@ -1,2 +1,2 @@\n def subtract(a, b):\n-    return a + b\n+    return a - b\n"
     fake_llm_responses = iter(
         [
             MagicMock(content='{"summary": "bug in subtract", "suspected_symbols": ["subtract"]}'),
-            MagicMock(content='{"patch_diff": "--- bad patch 1 ---", "rationale": "attempt 1"}'),
-            MagicMock(content='{"patch_diff": "--- good patch 2 ---", "rationale": "attempt 2"}'),
+            MagicMock(content=json.dumps({"patch_diff": valid_diff, "rationale": "attempt 1"})),
+            MagicMock(content=json.dumps({"patch_diff": valid_diff, "rationale": "attempt 2"})),
         ]
     )
 

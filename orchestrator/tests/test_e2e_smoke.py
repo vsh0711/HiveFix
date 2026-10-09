@@ -8,6 +8,7 @@ Run manually against a local `docker compose up redis qdrant`:
 """
 
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -39,7 +40,7 @@ def _write_sample_repo() -> str:
 
 FAKE_PATCH_DIFF = """--- a/calc.py
 +++ b/calc.py
-@@ -4,4 +4,4 @@ def add(a, b):
+@@ -5,3 +5,2 @@
  def subtract(a, b):
 -    # bug: should be a - b
 -    return a + b
@@ -66,7 +67,7 @@ async def main():
             MagicMock(
                 content='{"summary": "subtract() adds instead of subtracting.", "suspected_symbols": ["subtract"]}'
             ),
-            MagicMock(content=f'{{"patch_diff": {FAKE_PATCH_DIFF!r}, "rationale": "Fixed the operator."}}'),
+            MagicMock(content=json.dumps({"patch_diff": FAKE_PATCH_DIFF, "rationale": "Fixed the operator."})),
         ]
     )
 
@@ -136,6 +137,11 @@ async def main():
         f"an empty or wrong directory: {retrieve_entry}"
     )
     assert any(h.get("symbol") == "subtract" for h in state["retrieval_hits"]), state["retrieval_hits"]
+
+    patch_entry = next(e for e in state["audit_log"] if e["action"] == "draft_patch")
+    assert patch_entry["status"] == "ok", (
+        f"patch failed local `git apply --check` validation: {patch_entry}"
+    )
 
     audit_identities = [e["identity"] for e in state["audit_log"]]
     expected_identities = [i.name for i in ALL_IDENTITIES if i.name != "hivefix-gate"]

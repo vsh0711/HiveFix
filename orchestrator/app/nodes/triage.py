@@ -1,11 +1,10 @@
-import json
-
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .. import identity
 from ..audit import append_audit, audit_event
 from ..config import settings
+from ..llm_utils import parse_json_response
 from ..models.state import RunState
 
 _SYSTEM = """You triage GitHub issues for an autonomous bug-fix agent. Given an issue
@@ -33,10 +32,7 @@ def triage_node(state: RunState) -> RunState:
             "metadata": {"run_id": state["run_id"], "node": node_identity.name},
         },
     )
-    try:
-        parsed = json.loads(response.content)
-    except (json.JSONDecodeError, TypeError):
-        parsed = {"summary": response.content, "suspected_symbols": []}
+    parsed = parse_json_response(response.content) or {"summary": response.content, "suspected_symbols": []}
 
     entry = audit_event(
         node_identity,

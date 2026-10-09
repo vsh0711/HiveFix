@@ -49,12 +49,18 @@ class RunManager:
         return run_id
 
     async def _execute(self, run_id: str, state: dict):
+        latest_state = state
         try:
             async for event in hivefix_graph.astream(state, stream_mode="values"):
+                latest_state = event
                 await self._save_state(run_id, event)
                 await self._publish(run_id, event)
         except Exception as exc:  # noqa: BLE001 — surface any failure to the dashboard
-            failed_state = {**state, "status": "failed", "error": str(exc)}
+            # Fall back on the last state the graph actually reached, not the
+            # initial pre-run state, so a mid-run failure doesn't discard whatever
+            # triage/retrieval/patch progress (and audit_log entries) already
+            # happened before the node that raised.
+            failed_state = {**latest_state, "status": "failed", "error": str(exc)}
             await self._save_state(run_id, failed_state)
             await self._publish(run_id, failed_state)
 

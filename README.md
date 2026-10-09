@@ -27,7 +27,7 @@ GitHub issue URL
 ```
 
 - **LangGraph** orchestrates the state machine above (`orchestrator/app/graph`).
-- **LangChain** (+ Groq, free-tier inference — default model `qwen/qwen3-32b`) drives triage, retrieval tool-calling, and patch drafting.
+- **LangChain** (+ Groq, free-tier inference — default model `qwen/qwen3.8-27b`) drives triage, retrieval tool-calling, and patch drafting.
 - **MCP tools** (`orchestrator/app/mcp_tools`) expose BM25 code search and AST call-graph traversal to the agent for fault localization.
 - **Qdrant** holds embedded code chunks as a semantic-search fallback alongside BM25.
 - **Redis** stores run state/events for the dashboard and acts as the run queue.
