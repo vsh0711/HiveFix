@@ -10,10 +10,12 @@ Persona: **Buzz** — the HiveFix bee. The dashboard visualizes each run as Buzz
 
 ## Results
 
-5 of 6 real, distinct bugs resolved end-to-end against a live demo repo, each a clean
-one-line fix, **0% false-approval rate held across every attempt** — the sandboxed
-test gate rejected every incorrect patch before a PR could open, including on the one
-unresolved issue. Full breakdown, real bugs found while building this, and the
+10/10 real, distinct bugs across 6 categories resolved end-to-end against a live demo
+repo, each a minimal correct diff, **0% false-approval rate held across every
+attempt** — the sandboxed test gate rejected every incorrect patch before a PR could
+open, including two rejected attempts on the one issue that needed a prompt fix (a
+real model reasoning gap, caught and fixed, re-validated against the exact case that
+failed before). Full breakdown, real bugs found while building this, and the
 deliberate tradeoffs behind the design: **[docs/technical_findings.md](docs/technical_findings.md)**.
 
 ## Scope (v1)

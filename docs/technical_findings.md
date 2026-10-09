@@ -7,9 +7,9 @@ real deployment, not from code review alone.
 
 ## Quantitative results
 
-Six distinct, deliberately-planted single-line bugs were run through the full
-pipeline end-to-end (real LLM, real MCP tool-calling retrieval, real GitHub Actions
-sandbox, real PR):
+Ten distinct, deliberately-planted bugs across six categories were run through the
+full pipeline end-to-end (real LLM, real MCP tool-calling retrieval, real GitHub
+Actions sandbox, real PR):
 
 | Issue | Bug type | Result |
 |---|---|---|
@@ -17,28 +17,35 @@ sandbox, real PR):
 | `is_positive(0)` returns `True` | boundary/comparison | **resolved** |
 | `factorial(5)` returns `24` not `120` | off-by-one loop | **resolved** |
 | `divide(7, 2)` returns `3` not `3.5` | wrong operator (`//` vs `/`) | **resolved** |
-| `max_of(3, 9)` returns `3` not `9` | inverted comparison branches | **not resolved** |
+| `max_of(3, 9)` returns `3` not `9` | inverted comparison branches | **resolved*** |
 | `remainder(7, 2)` returns `3` not `1` | wrong operator (`//` vs `%`) | **resolved** |
+| `format_price(9.5)` returns `'$9.5'` | wrong format spec (`.1f` vs `.2f`) | **resolved** |
+| `unique_items(...)` doesn't preserve order | wrong data structure (`set` vs ordered dedup) | **resolved** |
+| `safe_divide(5, 0)` raises instead of returning `None` | wrong exception type caught | **resolved** |
+| `all_positive([1,2,-3,4])` returns `True` | wrong boolean aggregation (`any` vs `all`) | **resolved** |
 
-**5/6 (83%) resolved**, each with a minimal, correct, exactly-one-line diff — no
-extraneous changes in any merged PR. **0% false-approval rate held across every
-attempt on every issue**: no incorrect patch was ever merged, because the sandboxed
-test gate rejected every wrong patch before a PR could open, including both attempts
-on the one unresolved issue.
+**10/10 resolved**, every merged PR a minimal, correct diff — no extraneous changes.
+**0% false-approval rate held across every attempt on every issue**: no incorrect
+patch was ever merged, because the sandboxed test gate rejected every wrong patch
+before a PR could open.
 
-The `max_of` failure is itself a useful result, not a blank: on both attempts the
-patch confidently restructured the `if` branch to `return a` in both paths — a
-different wrong answer each time, read as a plausible fix by the rationale text, but
-never correct. The gate caught it both times and the run correctly stopped after its
-retry budget rather than publishing a guess. This is the system working as designed:
-a sandboxed, bounded-retry gate exists specifically to make wrong patches cheap to
-catch and impossible to accidentally ship.
+\* `max_of` is the one genuinely interesting result, not a clean pass. On its first
+two attempts (before a prompt fix — see "real issues found" below) the patch
+confidently restructured the `if` branch to `return a` in both paths — a different
+wrong answer each time, read as a plausible fix by the model's own rationale text,
+but never correct. The sandboxed gate caught it both times and correctly refused to
+open a PR. After adding an explicit self-trace-against-the-reproduction step to the
+patch prompt, a **repeat run of the exact same issue** (not a fresh, easier case)
+resolved it correctly on attempt 2. That's the real story: a genuine model reasoning
+gap, a safety gate that did its job twice before the gap was closed, and a measurable
+fix — not "it worked on the first try."
 
-Caveat: six single-line synthetic bugs in one small file is enough to validate the
-pipeline and produce an honest number, not enough to claim a general resolve rate —
-see [eval_results.md](eval_results.md) for the same caveat applied to the RAGAS
-numbers, and `docs/eval_results.md`'s note on what a representative-scale eval (e.g.
-SWE-bench-style sampling) would take.
+Caveat: ten bugs (six of them single-line) in one small demo repo is enough to
+validate the pipeline, exercise six distinct bug categories, and produce an honest
+number — not enough to claim a general resolve rate. See
+[eval_results.md](eval_results.md) for the same caveat applied to the RAGAS numbers,
+and its note on what a representative-scale eval (e.g. SWE-bench-style sampling)
+would take.
 
 ### RAGAS (see [eval_results.md](eval_results.md) for full methodology)
 
@@ -142,6 +149,31 @@ Each of these was found by running the system for real, not by reading the code.
     repo's retrieval results — found by noticing unrelated function names in a real
     run's retrieval hits. Fixed with an explicit per-repo filter, verified with an
     isolation test against two distinct repos in the same collection.
+
+13. **The deployed write endpoint had no authentication.** `POST /runs` was reachable
+    by anyone who found the URL, who could then spend the deployed owner's LLM and
+    GitHub Actions quota and open PRs under their identity — a live exposure on a
+    real public deployment, not a hypothetical. Fixed with a shared-secret bearer
+    token required on the write endpoint only; read endpoints (run status, the
+    dashboard) stay open since there's no login flow and run data isn't sensitive
+    here. The frontend's key entry is deliberately never a `NEXT_PUBLIC_*` build-time
+    constant, since Next.js inlines those into the public JS bundle — it's entered
+    client-side and kept in `localStorage` per browser instead.
+
+14. **An uncaught exception masqueraded as a CORS failure.** A bad or nonexistent
+    issue URL raised inside the request/response cycle (resolving it against the
+    GitHub API happens synchronously before the background run starts), and the
+    resulting unhandled 500 didn't reliably carry CORS headers — the browser reported
+    a generic "Failed to fetch" with no usable detail instead of the real error.
+    Found by testing the new auth flow against an intentionally-fake repo from an
+    actual browser (curl doesn't enforce CORS, so it only ever showed the real 500).
+    Fixed by catching the resolution step explicitly and returning a clean 400.
+
+15. **A reasoning gap fixed with a verification step, not just hope.** See the
+    `max_of` result above — the patch prompt now requires tracing the patched code
+    against the issue's own reproduction before finalizing, instead of pattern-
+    matching "this looks like a fix." Re-validated against the exact case that failed
+    twice before, not a fresh easier one.
 
 ## Tradeoffs (deliberate, not bugs)
 
