@@ -1,0 +1,26 @@
+# Production image for deployment (e.g. Render). Local dev uses the plain
+# Dockerfile (npm run dev, hot reload) via docker-compose instead — this one
+# builds a standalone Next.js server, which needs NEXT_PUBLIC_* env vars
+# baked in at build time, not just runtime.
+FROM node:20-slim AS builder
+
+WORKDIR /app
+COPY package.json ./
+RUN npm install
+
+COPY . .
+ARG NEXT_PUBLIC_ORCHESTRATOR_URL
+ENV NEXT_PUBLIC_ORCHESTRATOR_URL=$NEXT_PUBLIC_ORCHESTRATOR_URL
+RUN npm run build
+
+FROM node:20-slim AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+EXPOSE 3000
+CMD ["node", "server.js"]

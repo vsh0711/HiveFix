@@ -36,3 +36,17 @@ services:
         value: "10"
       - key: SANDBOX_POLL_TIMEOUT_SECONDS
         value: "900"
+
+  - type: web
+    name: hivefix-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile.prod
+    dockerContext: ./frontend
+    plan: free
+    envVars:
+      # Next.js inlines NEXT_PUBLIC_* into the client bundle at build time, so this
+      # must be set before the Docker build runs, not just at container start —
+      # Render passes service env vars through as Docker build args for
+      # runtime:docker services, which Dockerfile.prod's ARG picks up.
+      - key: NEXT_PUBLIC_ORCHESTRATOR_URL
+        value: https://hivefix-orchestrator.onrender.com
