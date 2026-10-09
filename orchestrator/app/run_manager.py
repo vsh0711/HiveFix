@@ -14,6 +14,23 @@ RUN_KEY = "hivefix:run:{run_id}"
 RUN_INDEX_KEY = "hivefix:runs"
 
 
+def _describe_exception(exc: BaseException, _depth: int = 0) -> str:
+    """str(exc) on an ExceptionGroup/TaskGroup error (what anyio raises, which the
+    MCP stdio client uses internally) gives only a generic summary like 'unhandled
+    errors in a TaskGroup (1 sub-exception)' — the real cause is nested inside and
+    silently discarded unless unpacked explicitly. This recurses into
+    sub-exceptions so state["error"] (shown on the dashboard) always carries the
+    actual failure, not just that something failed inside a task group.
+    """
+    indent = "  " * _depth
+    header = f"{indent}{type(exc).__name__}: {exc}"
+    sub_excs = getattr(exc, "exceptions", None)
+    if not sub_excs:
+        return header
+    children = "\n".join(_describe_exception(sub, _depth + 1) for sub in sub_excs)
+    return f"{header}\n{children}"
+
+
 class RunManager:
     def __init__(self):
         self._redis = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -60,7 +77,7 @@ class RunManager:
             # initial pre-run state, so a mid-run failure doesn't discard whatever
             # triage/retrieval/patch progress (and audit_log entries) already
             # happened before the node that raised.
-            failed_state = {**latest_state, "status": "failed", "error": str(exc)}
+            failed_state = {**latest_state, "status": "failed", "error": _describe_exception(exc)}
             await self._save_state(run_id, failed_state)
             await self._publish(run_id, failed_state)
 
