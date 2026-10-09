@@ -7,9 +7,10 @@ real deployment, not from code review alone.
 
 ## Quantitative results
 
-Ten distinct, deliberately-planted bugs across six categories were run through the
-full pipeline end-to-end (real LLM, real MCP tool-calling retrieval, real GitHub
-Actions sandbox, real PR):
+Eleven distinct, deliberately-planted bugs across seven categories were run through
+the full pipeline end-to-end (real LLM, real MCP tool-calling retrieval, real GitHub
+Actions sandbox, real PR) — including runs against the live deployed service, not
+just local:
 
 | Issue | Bug type | Result |
 |---|---|---|
@@ -23,8 +24,9 @@ Actions sandbox, real PR):
 | `unique_items(...)` doesn't preserve order | wrong data structure (`set` vs ordered dedup) | **resolved** |
 | `safe_divide(5, 0)` raises instead of returning `None` | wrong exception type caught | **resolved** |
 | `all_positive([1,2,-3,4])` returns `True` | wrong boolean aggregation (`any` vs `all`) | **resolved** |
+| `average([1, 2])` returns `1` not `1.5` | wrong operator (`//` vs `/`), run live on the deployed service | **resolved** |
 
-**10/10 resolved**, every merged PR a minimal, correct diff — no extraneous changes.
+**11/11 resolved**, every merged PR a minimal, correct diff — no extraneous changes.
 **0% false-approval rate held across every attempt on every issue**: no incorrect
 patch was ever merged, because the sandboxed test gate rejected every wrong patch
 before a PR could open.
@@ -40,8 +42,8 @@ resolved it correctly on attempt 2. That's the real story: a genuine model reaso
 gap, a safety gate that did its job twice before the gap was closed, and a measurable
 fix — not "it worked on the first try."
 
-Caveat: ten bugs (six of them single-line) in one small demo repo is enough to
-validate the pipeline, exercise six distinct bug categories, and produce an honest
+Caveat: eleven bugs (seven of them single-line) in one small demo repo is enough to
+validate the pipeline, exercise seven distinct bug categories, and produce an honest
 number — not enough to claim a general resolve rate. See
 [eval_results.md](eval_results.md) for the same caveat applied to the RAGAS numbers,
 and its note on what a representative-scale eval (e.g. SWE-bench-style sampling)

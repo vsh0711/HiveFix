@@ -10,8 +10,9 @@ Persona: **Buzz** — the HiveFix bee. The dashboard visualizes each run as Buzz
 
 ## Results
 
-10/10 real, distinct bugs across 6 categories resolved end-to-end against a live demo
-repo, each a minimal correct diff, **0% false-approval rate held across every
+11/11 real, distinct bugs across 7 categories resolved end-to-end — including runs
+against the live deployed service — each a minimal correct diff, **0% false-approval
+rate held across every
 attempt** — the sandboxed test gate rejected every incorrect patch before a PR could
 open, including two rejected attempts on the one issue that needed a prompt fix (a
 real model reasoning gap, caught and fixed, re-validated against the exact case that
