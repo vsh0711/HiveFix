@@ -130,15 +130,26 @@ class GitHubClient:
         import subprocess
         import tempfile
 
-        with tempfile.TemporaryDirectory() as tmp:
-            local = git.Repo.clone_from(f"https://github.com/{owner}/{repo}.git", tmp, branch=branch_name)
-            patch_path = f"{tmp}/.hivefix.patch"
-            with open(patch_path, "w") as fh:
-                fh.write(patch_diff)
-            subprocess.run(["git", "apply", "--whitespace=fix", patch_path], cwd=tmp, check=True)
-            local.git.add(A=True)
-            local.index.commit("HiveFix: automated patch")
-            local.git.push("origin", branch_name)
+        authed_url = f"https://x-access-token:{settings.github_token}@github.com/{owner}/{repo}.git"
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                local = git.Repo.clone_from(authed_url, tmp, branch=branch_name)
+                patch_path = f"{tmp}/.hivefix.patch"
+                with open(patch_path, "w") as fh:
+                    fh.write(patch_diff)
+                subprocess.run(["git", "apply", "--whitespace=fix", patch_path], cwd=tmp, check=True)
+                local.git.add(A=True)
+                with local.config_writer() as cw:
+                    cw.set_value("user", "name", "HiveFix")
+                    cw.set_value("user", "email", "hivefix-bot@users.noreply.github.com")
+                local.index.commit("HiveFix: automated patch")
+                local.git.push("origin", branch_name)
+        except Exception as exc:
+            # GitPython/subprocess error messages echo the full command line, which
+            # would otherwise leak the embedded token into state["error"] — stored in
+            # Redis and shown on the dashboard.
+            scrubbed = str(exc).replace(settings.github_token, "***")
+            raise RuntimeError(scrubbed) from None
 
         pr = gh_repo.create_pull(title=title, body=body, head=branch_name, base=base_branch)
         return pr.html_url
