@@ -24,6 +24,18 @@ class QdrantCodeStore:
                 vectors_config=qmodels.VectorParams(size=self._embedder.dim, distance=qmodels.Distance.COSINE),
             )
 
+        # Idempotent regardless of whether the collection already existed — a
+        # collection created before this index existed (e.g. an already-running
+        # Qdrant Cloud deployment) needs it added too, not just fresh ones. Local
+        # Qdrant permits filtering on an unindexed payload field (full scan);
+        # Qdrant Cloud enforces an explicit index, rejecting the "repo" filter in
+        # search()/index_repo() with a 400 otherwise.
+        self._client.create_payload_index(
+            collection_name=settings.qdrant_collection,
+            field_name="repo",
+            field_schema=qmodels.PayloadSchemaType.KEYWORD,
+        )
+
     def index_repo(self, repo_path: str, owner: str, repo: str) -> None:
         repo_tag = f"{owner}/{repo}"
         # Skip re-indexing if this repo was already indexed in this collection.
