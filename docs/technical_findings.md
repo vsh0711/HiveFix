@@ -175,6 +175,27 @@ Each of these was found by running the system for real, not by reading the code.
     matching "this looks like a fix." Re-validated against the exact case that failed
     twice before, not a fresh easier one.
 
+16. **An empty directory passed a local build but broke a fresh clone.**
+    `frontend/public/` only ever held an empty subdirectory; git doesn't track empty
+    directories, so it existed on my local disk (where the build test ran and
+    passed) but was never actually committed. The first real deployment — a fresh
+    clone, not a working tree that happened to have the directory already —
+    failed at `COPY --from=builder /app/public ./public` with "not found." Fixed
+    with a tracked placeholder file, verified against a genuinely fresh clone (not
+    the working tree) before trusting it again.
+
+17. **"Deployed" (green, healthy) and completely unreachable were both true at
+    once.** After fixing #16, the frontend built and Render reported it deployed —
+    but every external request returned 502. The container was healthy from the
+    platform's perspective; the platform's proxy simply never reached it. Root
+    cause: Next's generated server auto-binds to `process.env.PORT`, which the
+    platform injects into the container independently of whatever port its proxy
+    actually forwards to — a mismatch that produces exactly this symptom (healthy
+    container, unreachable service) rather than a visible crash. Fixed by pinning
+    the port inline in the container's command, overriding the platform's injected
+    value for that process specifically, and verified locally by deliberately
+    injecting a conflicting `PORT` into the container before trusting the fix.
+
 ## Tradeoffs (deliberate, not bugs)
 
 - **One LangGraph agent with per-node scoped identity, not a true multi-agent

@@ -2,7 +2,7 @@
 
 Autonomous bug-resolution agent: takes a GitHub issue from triage to a merge-ready pull request, with no human edits in the loop. Built on LangGraph, with every patch gated behind a Docker-sandboxed regression run before a PR is opened.
 
-**Live:** [hivefix-orchestrator.onrender.com](https://hivefix-orchestrator.onrender.com) · **Results:** [docs/technical_findings.md](docs/technical_findings.md) · [docs/eval_results.md](docs/eval_results.md)
+**Live dashboard:** [hivefix-frontend.onrender.com](https://hivefix-frontend.onrender.com) · **API:** [hivefix-orchestrator.onrender.com](https://hivefix-orchestrator.onrender.com) · **Results:** [docs/technical_findings.md](docs/technical_findings.md) · [docs/eval_results.md](docs/eval_results.md)
 
 ![HiveFix dashboard demo](docs/demo.gif)
 

@@ -60,7 +60,33 @@ since that's what gets dispatched for every sandboxed test run.
    portfolio demo, worth knowing if a run seems to hang on the first request after
    a while.
 
-## 6. Point the frontend at it
+## 6. Deploy the frontend
 
-Set `NEXT_PUBLIC_ORCHESTRATOR_URL` to the Render service's public URL
-(`https://hivefix-orchestrator.onrender.com`) wherever the frontend runs.
+`render.yaml` also defines `hivefix-frontend`, built from
+`frontend/Dockerfile.prod` (a separate production image from the plain
+`frontend/Dockerfile` local dev uses via docker-compose — that one runs `npm run
+dev` for hot reload, not suitable for deployment). Syncing the blueprint after a
+`render.yaml` change picks up new services automatically; if it doesn't, trigger it
+manually from the Render dashboard.
+
+Two real gotchas hit deploying this, both fixed in the current `Dockerfile.prod` —
+worth knowing if you fork this or hit similar on another platform:
+
+- **`COPY --from=builder /app/public ./public` failed on Render but worked
+  locally.** `frontend/public/` only ever held an empty subdirectory; git doesn't
+  track empty directories, so it existed on disk locally (where the build happened
+  to pass) but was never actually committed — Render's fresh clone had no `public/`
+  at all. Fixed with a tracked `.gitkeep`. If you add real static assets to
+  `public/` later this stops being relevant, but it's a trap for any fresh Next.js
+  scaffold with an unused `public/` folder.
+- **Deployed cleanly, Render showed "Deployed," but every request 502'd.** Next's
+  generated standalone `server.js` auto-binds to `process.env.PORT`. Render (like
+  most platforms) injects its own `PORT` into every container's environment — if
+  that doesn't match whatever port the platform's proxy actually forwards to
+  (which for Docker-runtime services on Render appears to come from the
+  Dockerfile's `EXPOSE`, not the injected `PORT`), the app ends up listening
+  somewhere nothing ever connects to externally, while looking perfectly healthy
+  to the platform itself. Fixed by pinning the port inline in the container's
+  command (`CMD ["sh", "-c", "PORT=3000 node server.js"]`), which overrides
+  whatever the platform injects for that process specifically — the same pattern
+  the orchestrator's Dockerfile already used with a hardcoded `uvicorn --port 8000`.
