@@ -127,16 +127,21 @@ class GitHubClient:
         gh_repo.create_git_ref(ref=f"refs/heads/{branch_name}", sha=base_sha)
 
         # Apply the unified diff locally against a fresh clone, then push.
+        import os
         import subprocess
         import tempfile
 
         authed_url = f"https://x-access-token:{settings.github_token}@github.com/{owner}/{repo}.git"
+        # The patch file must live OUTSIDE the clone directory — writing it inside
+        # the clone and then `git add -A` previously committed the scratch patch
+        # file itself into the PR alongside the real fix.
+        patch_fd, patch_path = tempfile.mkstemp(suffix=".patch")
+        with os.fdopen(patch_fd, "w") as fh:
+            fh.write(patch_diff)
+
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 local = git.Repo.clone_from(authed_url, tmp, branch=branch_name)
-                patch_path = f"{tmp}/.hivefix.patch"
-                with open(patch_path, "w") as fh:
-                    fh.write(patch_diff)
                 subprocess.run(["git", "apply", "--whitespace=fix", patch_path], cwd=tmp, check=True)
                 local.git.add(A=True)
                 with local.config_writer() as cw:
@@ -150,6 +155,8 @@ class GitHubClient:
             # Redis and shown on the dashboard.
             scrubbed = str(exc).replace(settings.github_token, "***")
             raise RuntimeError(scrubbed) from None
+        finally:
+            os.remove(patch_path)
 
         pr = gh_repo.create_pull(title=title, body=body, head=branch_name, base=base_branch)
         return pr.html_url
