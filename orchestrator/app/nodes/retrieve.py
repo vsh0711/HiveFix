@@ -35,7 +35,12 @@ async def retrieve_node(state: RunState) -> RunState:
         tools = build_langchain_tools(session, repo_path)
         tools_by_name = {t.name: t for t in tools}
 
-        llm = ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key, temperature=0).bind_tools(tools)
+        llm = ChatGroq(
+            model=settings.groq_model,
+            api_key=settings.groq_api_key,
+            temperature=0,
+            max_tokens=settings.groq_max_tokens,
+        ).bind_tools(tools)
 
         messages = [
             SystemMessage(content=_SYSTEM),

@@ -49,7 +49,9 @@ def _git_apply_check(repo_path: str, patch_diff: str) -> str | None:
 
 def patch_node(state: RunState) -> RunState:
     node_identity = identity.PATCH
-    llm = ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key, temperature=0)
+    llm = ChatGroq(
+        model=settings.groq_model, api_key=settings.groq_api_key, temperature=0, max_tokens=settings.groq_max_tokens
+    )
 
     context_block = "\n\n".join(
         f"# {h['file_path']} ({h.get('symbol') or 'module'})\n{h['snippet']}" for h in state.get("retrieval_hits", [])

@@ -19,7 +19,9 @@ Respond ONLY with JSON: {"summary": str, "suspected_symbols": [str, ...]}"""
 
 def triage_node(state: RunState) -> RunState:
     node_identity = identity.TRIAGE
-    llm = ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key, temperature=0)
+    llm = ChatGroq(
+        model=settings.groq_model, api_key=settings.groq_api_key, temperature=0, max_tokens=settings.groq_max_tokens
+    )
     messages = [
         SystemMessage(content=_SYSTEM),
         HumanMessage(content=f"Title: {state['issue_title']}\n\nBody:\n{state['issue_body']}"),
